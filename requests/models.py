@@ -10,6 +10,11 @@ This module contains the primary objects that power Requests.
 import collections
 import logging
 
+try:
+    from collections.abc import Callable
+except ImportError:
+    from collections import Callable
+
 from io import BytesIO
 from .hooks import default_hooks
 from .structures import CaseInsensitiveDict
@@ -137,10 +142,10 @@ class RequestHooksMixin(object):
     def register_hook(self, event, hook):
         """Properly register a hook."""
 
-        if isinstance(hook, collections.Callable):
+        if isinstance(hook, Callable):
             self.hooks[event].append(hook)
         elif hasattr(hook, '__iter__'):
-            self.hooks[event].extend(h for h in hook if isinstance(h, collections.Callable))
+            self.hooks[event].extend(h for h in hook if isinstance(h, Callable))
 
     def deregister_hook(self, event, hook):
         """Deregister a previously registered hook.
@@ -386,6 +391,12 @@ class PreparedRequest(RequestEncodingMixin, RequestHooksMixin):
         self.body = body
 
     def prepare_content_length(self, body):
+        # For GET, HEAD, OPTIONS, DELETE methods, don't set Content-Length header
+        # This avoids issues with servers like Amazon that return 503 for GET with Content-Length
+        if self.method in ('GET', 'HEAD', 'OPTIONS', 'DELETE'):
+            return
+        
+        # For POST, PUT, PATCH and other methods, always set Content-Length
         self.headers['Content-Length'] = '0'
         if hasattr(body, 'seek') and hasattr(body, 'tell'):
             body.seek(0, 2)
